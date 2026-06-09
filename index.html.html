@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Monitoreo Dasométrico — CBS</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <style>
+        :root {
+            --primary:       #1a6fb3;
+            --primary-dark:  #0d4a7a;
+            --primary-light: #2d9fd4;
+            --teal:          #00b5a3;
+            --teal-dark:     #008f80;
+            --accent:        #e8a020;
+            --danger:        #c0392b;
+            --warning:       #f39c12;
+            --success:       #27ae60;
+            --bg:            #f0f5f9;
+            --card:          #ffffff;
+            --text:          #1a2a3a;
+            --text-light:    #5a6a7a;
+            --border:        #d0dce8;
+            --shadow:        0 2px 12px rgba(26,111,179,0.10);
+            --shadow-lg:     0 8px 32px rgba(26,111,179,0.18);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; }
+
+        /* LOADING */
+        #loadingOverlay {
+            position:fixed; inset:0; background:rgba(13,51,32,0.92);
+            display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:9999;
+        }
+        .spinner { width:52px; height:52px; border:4px solid rgba(255,255,255,0.2); border-top-color:#4db87a; border-radius:50%; animation:spin 0.75s linear infinite; margin-bottom:18px; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        #loadingOverlay p { color:rgba(255,255,255,0.8); font-size:14px; }
+
+        /* HEADER */
+        .header {
+            background:linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--teal-dark) 100%);
+            color:#fff; box-shadow:var(--shadow-lg); position:sticky; top:0; z-index:200;
+        }
+        .header-top {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:14px 32px; border-bottom:1px solid rgba(255,255,255,0.12); gap:16px;
+        }
+        .header-logos { display:flex; align-items:center; gap:20px; flex-shrink:0; }
+        .logo-item { display:flex; flex-direction:column; align-items:center; gap:4px; }
+        .logo-img  { height:44px; width:auto; object-fit:contain; }
+        .logo-wrap { background:#fff; border-radius:8px; padding:4px 10px; display:flex; align-items:center; justify-content:center; height:44px; }
+        .logo-role { font-size:9px; opacity:0.65; text-transform:uppercase; letter-spacing:1.2px; }
+        .logo-sep  { width:1px; height:44px; background:rgba(255,255,255,0.18); }
+        .header-center { text-align:center; flex:1; }
+        .header-center h1 { font-size:19px; font-weight:700; letter-spacing:0.4px; }
+        .header-center p  { font-size:11px; opacity:0.72; margin-top:3px; }
+        .header-meta { text-align:right; min-width:180px; flex-shrink:0; }
+        .header-meta .meta-label { font-size:10px; opacity:0.65; text-transform:uppercase; letter-spacing:0.5px; }
+        .header-meta .meta-value { font-size:13px; font-weight:600; margin-top:2px; }
+
+        /* PRIMARY NAV */
+        .header-nav {
+            display:flex; align-items:center; gap:8px; padding:9px 32px; flex-wrap:wrap;
+            border-bottom:1px solid rgba(255,255,255,0.08);
+        }
+        .nav-label { font-size:11px; opacity:0.7; text-transform:uppercase; letter-spacing:0.6px; margin-right:4px; }
+        .camp-btn {
+            padding:5px 16px; border-radius:20px; border:1px solid rgba(255,255,255,0.28);
+            background:transparent; color:#fff; cursor:pointer; font-size:12px; font-weight:500; transition:all 0.18s;
+        }
+        .camp-btn:hover:not(:disabled) { background:rgba(255,255,255,0.14); }
+        .camp-btn.active { background:rgba(255,255,255,0.24); border-color:rgba(255,255,255,0.7); font-weight:700; }
+        .camp-btn.ejecucion { border-color:#f0c040; color:#f0c040; }
+        .camp-btn.ejecucion.active { background:rgba(240,192,64,0.2); }
+        .camp-btn.comparacion { border-color:#d7a8f5; color:#d7a8f5; }
+        .camp-btn.comparacion.active { background:rgba(155,89,182,0.3); border-color:#d7a8f5; }
+        .camp-btn:disabled { opacity:0.35; cursor:not-allowed; }
+
+        /* EMI SUB-NAV */
+        .emi-nav {
+            display:flex; align-items:center; gap:6px; padding:7px 32px; flex-wrap:wrap;
+            background:rgba(0,0,0,0.14);
+        }
+        .emi-btn {
+            padding:3px 13px; border-radius:14px; border:1px solid rgba(255,255,255,0.20);
+            background:transparent; color:rgba(255,255,255,0.72); cursor:pointer; font-size:11px; font-weight:500; transition:all 0.15s;
+        }
+        .emi-btn:hover { background:rgba(255,255,255,0.10); }
+        .emi-btn.active { background:rgba(0,181,163,0.35); border-color:var(--teal); color:#fff; font-weight:700; }
+
+        /* MAIN */
+        .main { max-width:1400px; margin:0 auto; padding:22px 24px 52px; }
+
+        /* ALERT */
+        .alert {
+            display:flex; align-items:flex-start; gap:12px; padding:13px 18px;
+            border-radius:12px; margin-bottom:22px; font-size:13px; font-weight:500;
+        }
+        .alert.danger  { background:#fdf0ef; border:1px solid #e74c3c; color:#922b21; }
+        .alert.warning { background:#fef9e7; border:1px solid #f39c12; color:#9a6c00; }
+        .alert.success { background:#eafaf1; border:1px solid #27ae60; color:#1a6b3c; }
+        .alert.info    { background:#eaf4fb; border:1px solid #2980b9; color:#1a4a7a; }
+        .alert-icon { font-size:18px; flex-shrink:0; margin-top:1px; }
+
+        /* SECTION TITLE */
+        .section-title {
+            font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+            color:var(--text-light); margin:20px 0 12px; display:flex; align-items:center; gap:10px;
+        }
+        .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+        /* KPI */
+        .kpi-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:4px; }
+        .kpi-card {
+            background:var(--card); border-radius:14px; padding:18px 18px 14px; box-shadow:var(--shadow);
+            border-top:4px solid transparent; transition:transform 0.18s, box-shadow 0.18s;
+            position:relative; overflow:hidden;
+        }
+        .kpi-card::after { content:''; position:absolute; top:-16px; right:-16px; width:80px; height:80px; border-radius:50%; opacity:0.07; }
+        .kpi-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); }
+        .kpi-card.c-green  { border-top-color:var(--teal); } .kpi-card.c-green::after  { background:var(--teal); }
+        .kpi-card.c-red    { border-top-color:#e74c3c; }     .kpi-card.c-red::after    { background:#e74c3c; }
+        .kpi-card.c-yellow { border-top-color:#f39c12; }     .kpi-card.c-yellow::after { background:#f39c12; }
+        .kpi-card.c-blue   { border-top-color:var(--primary); } .kpi-card.c-blue::after { background:var(--primary); }
+        .kpi-card.c-primary{ border-top-color:var(--primary-dark); } .kpi-card.c-primary::after { background:var(--primary-dark); }
+        .kpi-label { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-light); font-weight:700; margin-bottom:7px; }
+        .kpi-value { font-size:38px; font-weight:800; line-height:1; margin-bottom:4px; }
+        .kpi-sub   { font-size:11px; color:var(--text-light); }
+        .kpi-card.c-green  .kpi-value { color:var(--teal); }
+        .kpi-card.c-red    .kpi-value { color:#e74c3c; }
+        .kpi-card.c-yellow .kpi-value { color:#f39c12; }
+        .kpi-card.c-blue   .kpi-value { color:var(--primary); }
+        .kpi-card.c-primary .kpi-value { color:var(--primary-dark); }
+
+        /* CHART CARD */
+        .chart-card { background:var(--card); border-radius:14px; padding:18px 18px 14px; box-shadow:var(--shadow); }
+        .chart-card h3 {
+            font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-light);
+            margin-bottom:14px; padding-bottom:11px; border-bottom:1px solid var(--border);
+            display:flex; align-items:center; gap:7px;
+        }
+        .dot { width:8px; height:8px; border-radius:50%; background:var(--primary); flex-shrink:0; }
+        .charts-row { display:grid; gap:14px; margin-bottom:14px; }
+        .r3  { grid-template-columns:repeat(3,1fr); }
+        .r2  { grid-template-columns:3fr 2fr; }
+        .r2b { grid-template-columns:2fr 1fr; }
+
+        /* LEAFLET MAP */
+        #mapContainer { height:420px; border-radius:10px; overflow:hidden; }
+
+        /* TABLE */
+        .table-card { background:var(--card); border-radius:14px; padding:18px; box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden; }
+        .table-card h3 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-light); margin-bottom:14px; padding-bottom:11px; border-bottom:1px solid var(--border); }
+        .tscroll { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:12px; }
+        th { background:var(--bg); padding:9px 11px; text-align:left; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-light); border-bottom:2px solid var(--border); white-space:nowrap; }
+        td { padding:9px 11px; border-bottom:1px solid var(--border); vertical-align:middle; }
+        tr:last-child td { border-bottom:none; }
+        tbody tr:hover td { background:#f6faf6; }
+        .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; }
+        .b-B { background:#d5f5e3; color:#1a6b3c; } .b-R { background:#fef9e7; color:#9a6c00; }
+        .b-M { background:#fdf0ef; color:#922b21; } .b-V { background:#d5f5e3; color:#1a6b3c; }
+        .b-dead { background:#fdf0ef; color:#922b21; }
+
+        /* MODAL — FICHA PLANTA */
+        .modal-overlay {
+            position:fixed; inset:0; background:rgba(10,20,40,0.72);
+            display:flex; align-items:center; justify-content:center;
+            z-index:5000; padding:20px; animation:fadeIn 0.15s ease;
+        }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        .plant-card {
+            background:var(--card); border-radius:18px;
+            width:100%; max-width:540px; max-height:88vh; overflow-y:auto;
+            box-shadow:0 20px 60px rgba(0,0,0,0.4); position:relative;
+            animation:slideUp 0.2s ease;
+        }
+        @keyframes slideUp { from { transform:translateY(16px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+        .card-close {
+            position:absolute; top:14px; right:16px;
+            background:rgba(0,0,0,0.08); border:none; border-radius:50%;
+            width:30px; height:30px; font-size:20px; cursor:pointer; color:var(--text);
+            display:flex; align-items:center; justify-content:center; line-height:1;
+        }
+        .card-close:hover { background:rgba(0,0,0,0.15); }
+        .card-header { padding:22px 22px 16px; border-bottom:1px solid var(--border); }
+        .card-badge { display:inline-block; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:700; margin-bottom:8px; }
+        .badge-vivo   { background:#d5f5e3; color:#1a6b3c; }
+        .badge-muerto { background:#fdf0ef; color:#922b21; }
+        .card-header h2 { font-size:18px; font-weight:800; color:var(--text); }
+        .card-header em { font-size:13px; color:var(--text-light); display:block; margin-top:2px; font-style:italic; }
+        .card-meta { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:var(--text-light); }
+        .card-body { padding:18px 22px 22px; }
+        .card-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+        .card-metric { background:var(--bg); border-radius:10px; padding:12px 14px; }
+        .cm-label { font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-light); font-weight:700; margin-bottom:4px; }
+        .cm-value { font-size:16px; font-weight:700; color:var(--text); }
+        .card-obs { background:#fef9e7; border:1px solid #f0c040; border-radius:8px; padding:10px 14px; font-size:12px; color:#7a5500; line-height:1.6; margin-top:10px; }
+        .card-trend { margin-top:14px; }
+        .card-trend h4 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-light); margin-bottom:8px; }
+
+        /* COMPARISON VIEW */
+        .comp-banner {
+            background:linear-gradient(135deg, #4a235a 0%, #6c3483 100%);
+            color:#fff; border-radius:14px; padding:20px 24px; margin-bottom:18px;
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+        }
+        .comp-banner h2 { font-size:16px; font-weight:700; }
+        .comp-banner p  { font-size:12px; opacity:0.75; margin-top:4px; }
+        .comp-tags { display:flex; gap:8px; flex-wrap:wrap; }
+        .comp-tag { padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; border:1px solid rgba(255,255,255,0.3); }
+        .comp-tag.done    { background:rgba(39,174,96,0.35); border-color:#27ae60; }
+        .comp-tag.running { background:rgba(240,192,64,0.3); border-color:#f0c040; color:#f0c040; }
+        .comp-tag.pending { opacity:0.45; }
+        .comp-note { background:#eaf4fb; border:1px solid #2980b9; border-radius:12px; padding:12px 16px; font-size:12px; color:#1a4a7a; margin-bottom:14px; }
+
+        footer { text-align:center; padding:22px; font-size:11px; color:var(--text-light); border-top:1px solid var(--border); margin-top:12px; }
+
+        @media (max-width:1100px) {
+            .kpi-grid { grid-template-columns:repeat(3,1fr); }
+            .r3 { grid-template-columns:1fr 1fr; }
+        }
+        @media (max-width:760px) {
+            .header-top { flex-direction:column; padding:12px 16px; }
+            .header-nav, .emi-nav { padding:8px 16px; }
+            .main { padding:14px 14px 40px; }
+            .kpi-grid { grid-template-columns:repeat(2,1fr); }
+            .r3,.r2,.r2b { grid-template-columns:1fr; }
+            .card-grid { grid-template-columns:1fr; }
+            .comp-banner { flex-direction:column; align-items:flex-start; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <p id="loadingMsg">Cargando datos de monitoreo…</p>
+</div>
+
+<!-- MODAL FICHA PLANTA -->
+<div id="modalContainer" style="display:none"></div>
+
+<!-- HEADER -->
+<header class="header">
+    <div class="header-top">
+        <div class="header-logos">
+            <div class="logo-item">
+                <div class="logo-wrap">
+                    <img class="logo-img" src="https://lh3.googleusercontent.com/d/1BrJ8m_ocoPIQIyjpUgG30AeGRISBCfwV" alt="ANIN"
+                        onerror="this.style.display='none';this.parentElement.insertAdjacentHTML('beforeend','<span style=\'font-weight:800;font-size:14px;color:#1a6fb3\'>ANIN</span>')">
+                </div>
+                <span class="logo-role">Contratante</span>
+            </div>
+            <div class="logo-sep"></div>
+            <div class="logo-item">
+                <div class="logo-wrap">
+                    <img class="logo-img" src="https://lh3.googleusercontent.com/d/1D5QVRr0mYWTqYQKRMBJpAcfTbb7Ne_Cl" alt="CBS"
+                        onerror="this.style.display='none';this.parentElement.insertAdjacentHTML('beforeend','<span style=\'font-weight:800;font-size:14px;color:#1a6fb3\'>CBS</span>')">
+                </div>
+                <span class="logo-role">Contratista</span>
+            </div>
+            <div class="logo-sep"></div>
+            <div class="logo-item">
+                <div class="logo-wrap">
+                    <img class="logo-img" src="https://lh3.googleusercontent.com/d/1BmaaSB3wn4ZqyknYYOe174VF87LHh1gT" alt="CEORZA"
+                        onerror="this.style.display='none';this.parentElement.insertAdjacentHTML('beforeend','<span style=\'font-weight:800;font-size:14px;color:#1a6fb3\'>CEORZA</span>')">
+                </div>
+                <span class="logo-role">Subcontratista</span>
+            </div>
+        </div>
+        <div class="header-center">
+            <h1>Dashboard de Monitoreo Dasométrico</h1>
+            <p>Plan de Compensación Ambiental — Seguimiento de Individuos en Área Compensada</p>
+        </div>
+        <div class="header-meta">
+            <div class="meta-label">Última actualización</div>
+            <div class="meta-value" id="lastUpdate">—</div>
+        </div>
+    </div>
+
+    <!-- PRIMARY NAV -->
+    <div class="header-nav">
+        <span class="nav-label">Vista:</span>
+        <button class="camp-btn comparacion" id="btnComparacion" onclick="switchToComparison()">📊 Comparación</button>
+        <span class="nav-label" style="margin-left:8px">Campaña:</span>
+        <div id="campNav"></div>
+    </div>
+
+    <!-- EMI SUB-NAV -->
+    <div class="emi-nav" id="emiNav" style="display:none">
+        <span class="nav-label">EMI:</span>
+        <div id="emiButtons"></div>
+    </div>
+</header>
+
+<!-- MAIN -->
+<main class="main">
+
+    <div id="alertBanner" style="display:none"></div>
+
+    <!-- ══ VISTA CAMPAÑA ══ -->
+    <div id="campaignView">
+
+        <div class="section-title">Indicadores principales</div>
+        <div class="kpi-grid">
+            <div class="kpi-card c-primary">
+                <div class="kpi-label">Total registros</div>
+                <div class="kpi-value" id="k-total">—</div>
+                <div class="kpi-sub">individuos en campaña</div>
+            </div>
+            <div class="kpi-card c-green">
+                <div class="kpi-label">Individuos vivos</div>
+                <div class="kpi-value" id="k-vivos">—</div>
+                <div class="kpi-sub" id="k-vivos-pct">% del total</div>
+            </div>
+            <div class="kpi-card c-red">
+                <div class="kpi-label">Requieren replante</div>
+                <div class="kpi-value" id="k-muertos">—</div>
+                <div class="kpi-sub">posiciones sin individuo</div>
+            </div>
+            <div class="kpi-card c-blue">
+                <div class="kpi-label">Cobertura actual</div>
+                <div class="kpi-value" id="k-cobertura">—</div>
+                <div class="kpi-sub">meta: 95%</div>
+            </div>
+            <div class="kpi-card c-yellow">
+                <div class="kpi-label">Fitosanitario Malo</div>
+                <div class="kpi-value" id="k-fito-m">—</div>
+                <div class="kpi-sub">requieren atención inmediata</div>
+            </div>
+        </div>
+
+        <div class="section-title">Cobertura y estado general</div>
+        <div class="charts-row r3">
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#2980b9"></span>Cobertura vs Meta 95%</h3>
+                <div style="position:relative;height:210px"><canvas id="cCobertura"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#27ae60"></span>Estado Fitosanitario</h3>
+                <div style="position:relative;height:210px"><canvas id="cFito"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#1a8a6b"></span>Condiciones Hídricas</h3>
+                <div style="position:relative;height:210px"><canvas id="cHidrico"></canvas></div>
+            </div>
+        </div>
+
+        <div class="section-title">Métricas dasométricas</div>
+        <div class="charts-row r2">
+            <div class="chart-card">
+                <h3><span class="dot"></span>Altura y diámetro de copa promedio por EMI (cm)</h3>
+                <div style="position:relative;height:250px"><canvas id="cAltura"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#8e44ad"></span>Composición de especies</h3>
+                <div style="position:relative;height:250px"><canvas id="cEspecies"></canvas></div>
+            </div>
+        </div>
+
+        <div class="charts-row r2b">
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#e67e22"></span>Estado vital y daño mecánico por EMI</h3>
+                <div style="position:relative;height:240px"><canvas id="cDano"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#c0392b"></span>Plagas y patógenos detectados</h3>
+                <div style="position:relative;height:240px"><canvas id="cPlagas"></canvas></div>
+            </div>
+        </div>
+
+        <!-- MAPA SATELITAL -->
+        <div class="section-title">Distribución espacial — mapa satelital</div>
+        <div class="chart-card" style="margin-bottom:14px; padding:18px 18px 8px">
+            <h3><span class="dot" style="background:#16a085"></span>
+                Mapa satelital — clic en cualquier punto para ver la ficha del individuo
+                <span style="margin-left:auto; font-size:10px; opacity:0.6; text-transform:none; letter-spacing:0">
+                    🟢 Vivo/Bueno &nbsp; 🟡 Regular &nbsp; 🔴 Muerto/Malo
+                </span>
+            </h3>
+            <div id="mapContainer"></div>
+        </div>
+
+        <div class="section-title">Resumen por EMI</div>
+        <div class="table-card">
+            <h3>Tabla comparativa — todas las estaciones</h3>
+            <div class="tscroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>EMI</th><th>Total</th><th>Vivos</th><th>Muertos/Replante</th>
+                            <th>Fito. B</th><th>Fito. R</th><th>Fito. M</th>
+                            <th>Cobertura</th><th>Alt. prom. (cm)</th><th>Diam. Copa (cm)</th><th>Área Basal (cm²)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tEstaciones"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-title">Atención prioritaria</div>
+        <div class="table-card">
+            <h3>Individuos que requieren intervención inmediata</h3>
+            <div class="tscroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>EMI</th><th>N° Individuo</th><th>Nombre común</th><th>Nombre científico</th>
+                            <th>Estado vital</th><th>Fitosanitario</th><th>Hídrico</th>
+                            <th>Daño mecánico</th><th>Plaga/Patógeno</th><th>Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tPrioridad"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ VISTA COMPARACIÓN ══ -->
+    <div id="comparisonView" style="display:none">
+
+        <div class="comp-banner">
+            <div>
+                <h2>📊 Trazabilidad entre Monitoreos</h2>
+                <p>Evolución dasométrica de individuos a lo largo de las campañas</p>
+            </div>
+            <div class="comp-tags" id="compTags"></div>
+        </div>
+
+        <div class="comp-note" id="compNote"></div>
+
+        <div class="section-title">Evolución promedio por EMI</div>
+        <div class="charts-row r3">
+            <div class="chart-card">
+                <h3><span class="dot"></span>Altura promedio (cm)</h3>
+                <div style="position:relative;height:240px"><canvas id="cCompAltura"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#00b5a3"></span>Diám. Copa promedio (cm)</h3>
+                <div style="position:relative;height:240px"><canvas id="cCompCopa"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h3><span class="dot" style="background:#8e44ad"></span>Cobertura (% vivos)</h3>
+                <div style="position:relative;height:240px"><canvas id="cCompCobertura"></canvas></div>
+            </div>
+        </div>
+
+        <div class="section-title">Seguimiento por individuo</div>
+        <div class="table-card">
+            <h3>Crecimiento individual entre monitoreos (individuos con datos en ≥ 2 campañas)</h3>
+            <div class="tscroll">
+                <table>
+                    <thead><tr id="compTableHead"></tr></thead>
+                    <tbody id="compTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<footer>
+    Dashboard de Monitoreo Dasométrico · Datos desde Google Sheets · Desarrollado por CEORZA
+</footer>
+
+<!-- ================================================================
+     JAVASCRIPT
+================================================================ -->
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const SHEET_ID      = '1qm7TeMKHBRUBqxOntUN54tHI-YbpSo6YqDAz-wLBiZs';
+const COVERAGE_TARGET = 95;
+const UTM_ZONE      = 17;   // UTM WGS84 Zona 17S
+
+// Definición proj4: WGS84 / UTM zona sur
+proj4.defs(`EPSG:327${UTM_ZONE}`, `+proj=utm +zone=${UTM_ZONE} +south +datum=WGS84 +units=m +no_defs`);
+
+const CAMPAIGNS = [
+    { id:'Mon01', nombre:'Monitoreo 01', fecha:'2026-05-01', estado:'Completado',   gid:'0'          },
+    { id:'Mon02', nombre:'Monitoreo 02', fecha:'2026-06-01', estado:'En ejecución', gid:'1120890811'  },
+    { id:'Mon03', nombre:'Monitoreo 03', fecha:'2026-07-01', estado:'Proyectado',   gid:'1869013276'  },
+    { id:'Mon04', nombre:'Monitoreo 04', fecha:'2026-08-01', estado:'Proyectado',   gid:'1685891722'  },
+];
+
+// ─────────────────────────────────────────────
+// COLUMN ACCESSORS
+// ─────────────────────────────────────────────
+function norm(s) {
+    return s.replace(/\s+/g,' ').trim().toLowerCase()
+        .replace(/[áàäâã]/g,'a').replace(/[éèëê]/g,'e')
+        .replace(/[íìïî]/g,'i').replace(/[óòöôõ]/g,'o')
+        .replace(/[úùüû]/g,'u').replace(/[ñ]/g,'n');
+}
+function findCol(row, ...kws) {
+    const keys = Object.keys(row);
+    for (const kw of kws) {
+        const n = norm(kw);
+        const k = keys.find(k => norm(k) === n);
+        if (k !== undefined) return String(row[k]||'').trim();
+    }
+    const words = norm(kws[0]).split(' ').filter(w=>w.length>2);
+    const k = keys.find(key => words.every(w=>norm(key).includes(w)));
+    return k !== undefined ? String(row[k]||'').trim() : '';
+}
+function firstLetter(val) {
+    const v = val.trim();
+    if (!v) return '';
+    return v.toUpperCase().charAt(0);
+}
+
+const C = {
+    estacion:  r => findCol(r,'Estación de monitoreo','Estacion de monitoreo','estacion monitoreo'),
+    cientifico:r => findCol(r,'Nombre científico','Nombre cientifico','cientifico'),
+    comun:     r => findCol(r,'Nombre común','Nombre comun','nombre comun'),
+    individuo: r => findCol(r,'N° de individuo','N de individuo','individuo'),
+    este:      r => parseFloat(findCol(r,'Este'))||0,
+    norte:     r => parseFloat(findCol(r,'Norte'))||0,
+    altura:    r => { const v=parseFloat(findCol(r,'Altura (cm)','Altura')); return isNaN(v)?null:v; },
+    diamCopa:  r => { const v=parseFloat(findCol(r,'Diámetro Copa (cm)','Diametro Copa','copa')); return isNaN(v)?null:v; },
+    estado:    r => firstLetter(findCol(r,'Estado  V=Vivo o M=Muerto','Estado V=Vivo o M=Muerto','vivo muerto','estado vital')),
+    fito:      r => firstLetter(findCol(r,'Estado  Fitosanitario B o R o M','Estado Fitosanitario','fitosanitario')),
+    hidrico:   r => findCol(r,'Condiciones  Hídricas','Condiciones Hidricas','hidricas')||'Sin dato',
+    dano:      r => findCol(r,'Daño Mecánico  (ramas/raíces)','Daño Mecanico','dano mecanico'),
+    plaga:     r => findCol(r,'Plaga /  Patógeno','Plaga / Patogeno','plaga','patogeno'),
+    obs:       r => findCol(r,'Observaciones'),
+    areaBasal: r => { const v=parseFloat(findCol(r,'Área Basal  (cm²)','Area Basal','basal')); return isNaN(v)?null:v; },
+    codigo:    r => findCol(r,'Código','Codigo','codigo individuo')||findCol(r,'N° de individuo','individuo'),
+};
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let charts       = {};
+let leafletMap   = null;
+let markersLayer = null;
+let currentView  = 'campaign';   // 'campaign' | 'comparison'
+let currentCamp  = null;
+let currentEMI   = 'all';
+let rawData      = {};           // { Mon01: [...], Mon02: [...], ... }
+let activeData   = [];           // filtered by EMI
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    buildCampaignNav();
+    initLeafletMap();
+    const first = CAMPAIGNS.find(c => c.estado !== 'Proyectado') || CAMPAIGNS[0];
+    loadCampaign(first);
+});
+
+// ─────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────
+function buildCampaignNav() {
+    const nav = document.getElementById('campNav');
+    CAMPAIGNS.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'camp-btn' + (c.estado==='En ejecución' ? ' ejecucion' : '');
+        btn.textContent = c.nombre;
+        btn.dataset.id = c.id;
+        if (c.estado==='Proyectado') btn.disabled = true;
+        btn.onclick = () => loadCampaign(c);
+        nav.appendChild(btn);
+    });
+}
+
+function setActiveCamp(id) {
+    document.querySelectorAll('.camp-btn:not(.comparacion)').forEach(b =>
+        b.classList.toggle('active', b.dataset.id === id));
+    document.getElementById('btnComparacion').classList.remove('active');
+}
+
+function buildEmiNav(data) {
+    const emis = [...new Set(data.map(r => C.estacion(r)).filter(Boolean))].sort();
+    const container = document.getElementById('emiButtons');
+    container.innerHTML = '';
+    if (emis.length < 2) { document.getElementById('emiNav').style.display='none'; return; }
+
+    document.getElementById('emiNav').style.display = 'flex';
+    const all = document.createElement('button');
+    all.className = 'emi-btn active';
+    all.textContent = 'Todos';
+    all.onclick = () => filterByEMI('all', data);
+    container.appendChild(all);
+
+    emis.forEach(e => {
+        const btn = document.createElement('button');
+        btn.className = 'emi-btn';
+        btn.textContent = e;
+        btn.onclick = () => filterByEMI(e, data);
+        container.appendChild(btn);
+    });
+}
+
+function filterByEMI(emi, data) {
+    currentEMI = emi;
+    document.querySelectorAll('.emi-btn').forEach(b =>
+        b.classList.toggle('active', b.textContent === (emi==='all' ? 'Todos' : emi)));
+    activeData = emi==='all' ? data : data.filter(r => C.estacion(r)===emi);
+    renderCharts(activeData);
+    renderTables(activeData);
+    updateLeafletMarkers(activeData);
+}
+
+// ─────────────────────────────────────────────
+// DATA LOAD — JSONP via gviz (sin CORS, funciona desde file://)
+// ─────────────────────────────────────────────
+function fetchCSV(gid) {
+    return new Promise((resolve, reject) => {
+        const cbName = 'gviz_cb_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+        const script = document.createElement('script');
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}&callback=${cbName}`;
+
+        const cleanup = () => { try { document.body.removeChild(script); } catch(e){} delete window[cbName]; };
+
+        window[cbName] = function(data) {
+            cleanup();
+            try { resolve(parseGviz(data)); }
+            catch(e) { reject(e); }
+        };
+
+        script.onerror = () => { cleanup(); reject(new Error('Error cargando sheet gid=' + gid)); };
+        script.src = url;
+        document.body.appendChild(script);
+
+        // Timeout 15s
+        setTimeout(() => { if (window[cbName]) { cleanup(); reject(new Error('Timeout gid=' + gid)); } }, 15000);
+    });
+}
+
+function parseGviz(data) {
+    const cols = data.table.cols.map(c => c.label || c.id || '');
+    return (data.table.rows || []).map(row => {
+        const obj = {};
+        (row.c || []).forEach((cell, i) => {
+            obj[cols[i]] = (cell && cell.v !== null && cell.v !== undefined) ? String(cell.v) : '';
+        });
+        return obj;
+    }).filter(r => Object.values(r).some(v => v !== ''));
+}
+
+async function loadCampaign(camp) {
+    loading(true, `Cargando ${camp.nombre}…`);
+    setActiveCamp(camp.id);
+    currentCamp = camp;
+    showView('campaign');
+    try {
+        if (!rawData[camp.id]) rawData[camp.id] = await fetchCSV(camp.gid);
+        const data = rawData[camp.id];
+        buildEmiNav(data);
+        currentEMI = 'all';
+        activeData = data;
+        renderAlert(stats(data), camp);
+        renderKPIs(stats(data));
+        renderCharts(data);
+        renderTables(data);
+        updateLeafletMarkers(data);
+    } catch(e) {
+        console.error(e);
+        showAlert('danger','⚠️',`No se pudieron cargar los datos de <strong>${camp.nombre}</strong>. Verifica que el sheet esté publicado como CSV.`);
+    } finally {
+        loading(false);
+    }
+    document.getElementById('lastUpdate').textContent =
+        new Date().toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short'});
+}
+
+async function switchToComparison() {
+    loading(true,'Cargando datos de todas las campañas…');
+    document.getElementById('btnComparacion').classList.add('active');
+    document.querySelectorAll('.camp-btn:not(.comparacion)').forEach(b=>b.classList.remove('active'));
+    document.getElementById('emiNav').style.display = 'none';
+    showView('comparison');
+    document.getElementById('alertBanner').style.display = 'none';
+
+    const toLoad = CAMPAIGNS.filter(c => c.estado !== 'Proyectado');
+    try {
+        await Promise.all(toLoad.map(async c => {
+            if (!rawData[c.id]) rawData[c.id] = await fetchCSV(c.gid);
+        }));
+        renderComparison(toLoad);
+    } catch(e) {
+        console.error(e);
+        showAlert('danger','⚠️','Error cargando datos para la vista comparativa.');
+    } finally {
+        loading(false);
+    }
+}
+
+// ─────────────────────────────────────────────
+// STATS
+// ─────────────────────────────────────────────
+function stats(data) {
+    const total  = data.length;
+    const vivos  = data.filter(r => C.estado(r)==='V').length;
+    const fitoB  = data.filter(r => C.fito(r)==='B').length;
+    const fitoR  = data.filter(r => C.fito(r)==='R').length;
+    const fitoM  = data.filter(r => C.fito(r)==='M').length;
+    const cobertura = total ? (vivos/total*100) : 0;
+    return { total, vivos, muertos:total-vivos, fitoB, fitoR, fitoM, cobertura };
+}
+
+function renderAlert(s, camp) {
+    if (s.cobertura < COVERAGE_TARGET)
+        showAlert('danger','⚠️',
+            `Cobertura bajo la meta en <strong>${camp.nombre}</strong>: <strong>${s.cobertura.toFixed(1)}%</strong> vs objetivo 95% —
+             ${s.muertos} posiciones requieren replante — ${s.fitoM} individuo(s) fitosanitario Malo`);
+    else
+        showAlert('success','✅',
+            `Cobertura dentro de meta en <strong>${camp.nombre}</strong>: <strong>${s.cobertura.toFixed(1)}%</strong> — objetivo 95% cumplido`);
+}
+
+function renderKPIs(s) {
+    setText('k-total',    s.total);
+    setText('k-vivos',    s.vivos);
+    setText('k-vivos-pct', `${(s.vivos/s.total*100).toFixed(1)}% del total`);
+    setText('k-muertos',  s.muertos);
+    setText('k-cobertura',`${s.cobertura.toFixed(1)}%`);
+    setText('k-fito-m',   s.fitoM);
+}
+
+// ─────────────────────────────────────────────
+// CHARTS (vista campaña)
+// ─────────────────────────────────────────────
+function renderCharts(data) {
+    chartCobertura(stats(data));
+    chartFito(stats(data));
+    chartHidrico(data);
+    chartAltura(data);
+    chartEspecies(data);
+    chartDano(data);
+    chartPlagas(data);
+}
+
+function kill(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function chartCobertura(s) {
+    kill('cobertura');
+    const pct = Math.min(s.cobertura, 100);
+    const color = pct >= COVERAGE_TARGET ? '#27ae60' : '#e74c3c';
+    charts.cobertura = new Chart(get('cCobertura'), {
+        type: 'doughnut',
+        data: { labels:['Cobertura','Déficit'], datasets:[{ data:[pct,Math.max(0,100-pct)], backgroundColor:[color,'#ecf0f1'], borderWidth:0, circumference:180, rotation:270 }] },
+        options: { responsive:true, maintainAspectRatio:false, cutout:'74%', plugins:{ legend:{display:false}, tooltip:{enabled:false} } },
+        plugins:[{ id:'gauge-text', afterDraw(chart) {
+            const {ctx,width,height}=chart; ctx.save();
+            const cx=width/2, cy=height*0.80;
+            ctx.textAlign='center';
+            ctx.font=`bold 30px 'Segoe UI',sans-serif`; ctx.fillStyle=color;
+            ctx.fillText(`${pct.toFixed(1)}%`,cx,cy);
+            ctx.font=`11px 'Segoe UI',sans-serif`; ctx.fillStyle='#7f8c8d';
+            ctx.fillText(`Meta: ${COVERAGE_TARGET}%`,cx,cy+19); ctx.restore();
+        }}]
+    });
+}
+
+function chartFito(s) {
+    kill('fito');
+    charts.fito = new Chart(get('cFito'), {
+        type:'doughnut',
+        data:{ labels:['Bueno (B)','Regular (R)','Malo (M)'], datasets:[{ data:[s.fitoB,s.fitoR,s.fitoM], backgroundColor:['#27ae60','#f39c12','#e74c3c'], borderWidth:2, borderColor:'#fff' }] },
+        options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } } }
+    });
+}
+
+function chartHidrico(data) {
+    kill('hidrico');
+    const counts={};
+    data.forEach(r=>{ const h=C.hidrico(r)||'Sin dato'; counts[h]=(counts[h]||0)+1; });
+    const keys=Object.keys(counts), vals=Object.values(counts);
+    const colors=['#1a6fb3','#00b5a3','#2d9fd4','#f39c12','#e74c3c','#8e44ad','#95a5a6'];
+    charts.hidrico = new Chart(get('cHidrico'), {
+        type:'doughnut',
+        data:{ labels:keys, datasets:[{ data:vals, backgroundColor:colors.slice(0,keys.length), borderWidth:2, borderColor:'#fff' }] },
+        options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } } }
+    });
+}
+
+function chartAltura(data) {
+    kill('altura');
+    const by=groupBy(data, r=>C.estacion(r));
+    const labs=Object.keys(by).sort();
+    charts.altura = new Chart(get('cAltura'), {
+        type:'bar',
+        data:{ labels:labs, datasets:[
+            { label:'Altura prom. (cm)',     data:labs.map(s=>avg(by[s].map(r=>C.altura(r)).filter(v=>v!==null))), backgroundColor:'#1a6fb3', borderRadius:6 },
+            { label:'Diám. Copa prom. (cm)', data:labs.map(s=>avg(by[s].map(r=>C.diamCopa(r)).filter(v=>v!==null))), backgroundColor:'#00b5a3', borderRadius:6 },
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{ boxWidth:12, font:{size:11} } } },
+            scales:{ y:{ beginAtZero:true, grid:{ color:'#f0f0f0' } }, x:{ grid:{ display:false } } }
+        }
+    });
+}
+
+function chartEspecies(data) {
+    kill('especies');
+    const counts={};
+    data.forEach(r=>{ const sp=C.cientifico(r)||C.comun(r)||'Sin dato'; counts[sp]=(counts[sp]||0)+1; });
+    const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const colors=['#1a6fb3','#00b5a3','#2d9fd4','#0d4a7a','#8e44ad','#e67e22','#f39c12','#95a5a6'];
+    charts.especies = new Chart(get('cEspecies'), {
+        type:'bar',
+        data:{ labels:sorted.map(([k])=>k.length>24?k.slice(0,22)+'…':k), datasets:[{ data:sorted.map(([,v])=>v), backgroundColor:colors, borderRadius:6 }] },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ display:false } },
+            scales:{ x:{ beginAtZero:true, grid:{color:'#f0f0f0'} }, y:{ grid:{display:false}, ticks:{font:{size:10}} } }
+        }
+    });
+}
+
+function chartDano(data) {
+    kill('dano');
+    const by=groupBy(data, r=>C.estacion(r));
+    const labs=Object.keys(by).sort();
+    charts.dano = new Chart(get('cDano'), {
+        type:'bar',
+        data:{ labels:labs, datasets:[
+            { label:'Vivos',             data:labs.map(s=>by[s].filter(r=>C.estado(r)==='V').length), backgroundColor:'#27ae60', borderRadius:4 },
+            { label:'Muertos',           data:labs.map(s=>by[s].filter(r=>C.estado(r)==='M').length), backgroundColor:'#e74c3c', borderRadius:4 },
+            { label:'Con daño mecánico', data:labs.map(s=>by[s].filter(r=>{ const d=(C.dano(r)||'').toLowerCase(); return d&&!['no','ninguno','sin daño',''].includes(d); }).length), backgroundColor:'#e67e22', borderRadius:4 },
+        ]},
+        options:{ responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{ boxWidth:12, font:{size:11} } } },
+            scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, grid:{color:'#f0f0f0'} } }
+        }
+    });
+}
+
+function chartPlagas(data) {
+    kill('plagas');
+    const counts={};
+    data.forEach(r=>{ const p=C.plaga(r); if (!p||['no','ninguno','sin plaga','','n/a','-'].includes(p.toLowerCase())) return; counts[p]=(counts[p]||0)+1; });
+    const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    if (!entries.length) {
+        const cvs=get('cPlagas'), ctx2=cvs.getContext('2d'); ctx2.save();
+        ctx2.font='13px Segoe UI'; ctx2.fillStyle='#7f8c8d'; ctx2.textAlign='center';
+        ctx2.fillText('Sin plagas o patógenos detectados', cvs.parentElement.clientWidth/2, 110); ctx2.restore(); return;
+    }
+    charts.plagas = new Chart(get('cPlagas'), {
+        type:'bar',
+        data:{ labels:entries.map(([k])=>k), datasets:[{ data:entries.map(([,v])=>v), backgroundColor:'#c0392b', borderRadius:4 }] },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false} },
+            scales:{ x:{ beginAtZero:true, grid:{color:'#f0f0f0'} }, y:{ grid:{display:false}, ticks:{font:{size:11}} } }
+        }
+    });
+}
+
+// ─────────────────────────────────────────────
+// TABLES
+// ─────────────────────────────────────────────
+function renderTables(data) {
+    tableEstaciones(data);
+    tablePrioridad(data);
+}
+
+function tableEstaciones(data) {
+    const by=groupBy(data, r=>C.estacion(r));
+    const rows=Object.keys(by).sort().map(st=>{
+        const rr=by[st], tot=rr.length;
+        const viv=rr.filter(r=>C.estado(r)==='V').length, mue=tot-viv;
+        const fB=rr.filter(r=>C.fito(r)==='B').length, fR=rr.filter(r=>C.fito(r)==='R').length, fM=rr.filter(r=>C.fito(r)==='M').length;
+        const cob=(tot?viv/tot*100:0).toFixed(1);
+        const cobStyle=parseFloat(cob)>=COVERAGE_TARGET?'color:#27ae60;font-weight:700':'color:#e74c3c;font-weight:700';
+        const aH=avg(rr.map(r=>C.altura(r)).filter(v=>v!==null));
+        const aD=avg(rr.map(r=>C.diamCopa(r)).filter(v=>v!==null));
+        const aB=avg(rr.map(r=>C.areaBasal(r)).filter(v=>v!==null));
+        return `<tr>
+            <td><strong>${st}</strong></td><td>${tot}</td><td>${viv}</td>
+            <td>${mue>0?`<span style="color:#e74c3c;font-weight:600">${mue}</span>`:'0'}</td>
+            <td><span class="badge b-B">${fB}</span></td>
+            <td><span class="badge b-R">${fR}</span></td>
+            <td>${fM>0?`<span class="badge b-M">${fM}</span>`:'<span class="badge b-B">0</span>'}</td>
+            <td style="${cobStyle}">${cob}%</td>
+            <td>${aH!==null?aH.toFixed(1):'—'}</td>
+            <td>${aD!==null?aD.toFixed(1):'—'}</td>
+            <td>${aB!==null?aB.toFixed(2):'—'}</td>
+        </tr>`;
+    });
+    document.getElementById('tEstaciones').innerHTML = rows.join('');
+}
+
+function tablePrioridad(data) {
+    const priority=data.filter(r=>{
+        const p=C.plaga(r).toLowerCase();
+        return C.estado(r)==='M'||C.fito(r)==='M'||(p&&!['no','ninguno','sin plaga','','n/a','-'].includes(p));
+    });
+    if (!priority.length) {
+        document.getElementById('tPrioridad').innerHTML =
+            `<tr><td colspan="10" style="text-align:center;color:#27ae60;padding:20px;font-weight:500">✅ Sin individuos que requieran intervención inmediata en esta campaña.</td></tr>`;
+        return;
+    }
+    const rows=priority.map(r=>{
+        const est=C.estado(r), fit=C.fito(r);
+        return `<tr>
+            <td><strong>${C.estacion(r)}</strong></td><td>${C.individuo(r)}</td>
+            <td>${C.comun(r)}</td><td><em>${C.cientifico(r)}</em></td>
+            <td><span class="badge ${est==='V'?'b-V':'b-dead'}">${est==='V'?'Vivo':'Muerto'}</span></td>
+            <td><span class="badge b-${fit}">${fit==='B'?'Bueno':fit==='R'?'Regular':'Malo'}</span></td>
+            <td>${C.hidrico(r)}</td><td>${C.dano(r)||'—'}</td>
+            <td>${C.plaga(r)||'—'}</td>
+            <td style="max-width:180px;white-space:normal;font-size:11px">${C.obs(r)||'—'}</td>
+        </tr>`;
+    });
+    document.getElementById('tPrioridad').innerHTML = rows.join('');
+}
+
+// ─────────────────────────────────────────────
+// LEAFLET MAP
+// ─────────────────────────────────────────────
+function initLeafletMap() {
+    leafletMap = L.map('mapContainer', { zoomControl: true });
+
+    const satellite = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { attribution:'Tiles © Esri — World Imagery', maxZoom:21 }
+    );
+    const street = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        { attribution:'© OpenStreetMap contributors', maxZoom:19 }
+    );
+
+    satellite.addTo(leafletMap);
+    L.control.layers({'🛰 Satelital':satellite,'🗺 Calles':street}).addTo(leafletMap);
+
+    markersLayer = L.layerGroup().addTo(leafletMap);
+
+    // Default view Chile central if no data yet
+    leafletMap.setView([-33.45, -70.65], 12);
+}
+
+function utmToLatLng(este, norte) {
+    try {
+        const [lng, lat] = proj4(`EPSG:327${UTM_ZONE}`, 'WGS84', [este, norte]);
+        if (isNaN(lat)||isNaN(lng)||lat<-90||lat>90||lng<-180||lng>180) return null;
+        return L.latLng(lat, lng);
+    } catch(e) { return null; }
+}
+
+function updateLeafletMarkers(data) {
+    markersLayer.clearLayers();
+    const bounds = [];
+
+    data.forEach(r => {
+        const e=C.este(r), n=C.norte(r);
+        if (!e||!n) return;
+        const latlng = utmToLatLng(e, n);
+        if (!latlng) return;
+        bounds.push(latlng);
+
+        const estado=C.estado(r), fito=C.fito(r);
+        const color = (estado==='M'||fito==='M') ? '#e74c3c'
+                    : fito==='R'                  ? '#f39c12'
+                    :                               '#27ae60';
+
+        const marker = L.circleMarker(latlng, {
+            radius:7, fillColor:color, color:'#fff',
+            weight:1.5, opacity:1, fillOpacity:0.9
+        });
+
+        marker.bindTooltip(
+            `<strong>#${C.individuo(r)}</strong> — ${C.comun(r)||C.cientifico(r)}<br>
+             <em>${C.estacion(r)}</em>`,
+            { direction:'top', offset:[0,-6] }
+        );
+        marker.on('click', () => showPlantCard(r));
+        markersLayer.addLayer(marker);
+    });
+
+    if (bounds.length > 0) {
+        leafletMap.fitBounds(L.latLngBounds(bounds), { padding:[30,30], maxZoom:18 });
+    }
+}
+
+// ─────────────────────────────────────────────
+// FICHA PLANTA (modal)
+// ─────────────────────────────────────────────
+function showPlantCard(r) {
+    const est=C.estado(r), fit=C.fito(r);
+    const fitoLabel = fit==='B'?'🟢 Bueno':fit==='R'?'🟡 Regular':fit==='M'?'🔴 Malo':'—';
+
+    // Buscar historial del individuo en todas las campañas cargadas
+    const cod = C.codigo(r);
+    const emi = C.estacion(r);
+    const history = buildHistory(cod, emi);
+    const trendHtml = history.length >= 2 ? buildTrendChart(history) : '';
+
+    const html = `
+    <div class="modal-overlay" id="modalOverlay" onclick="handleModalClick(event)">
+        <div class="plant-card">
+            <button class="card-close" onclick="closePlantCard()">×</button>
+            <div class="card-header">
+                <span class="card-badge ${est==='V'?'badge-vivo':'badge-muerto'}">${est==='V'?'🌱 Vivo':'💀 Muerto / Requiere replante'}</span>
+                <h2>${C.comun(r)||'Sin nombre común'}</h2>
+                <em>${C.cientifico(r)||'—'}</em>
+                <div class="card-meta">
+                    <span>📍 ${C.estacion(r)}</span>
+                    <span>🔢 Individuo #${C.individuo(r)}</span>
+                    ${C.codigo(r) ? `<span>🏷 ${C.codigo(r)}</span>` : ''}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="card-grid">
+                    <div class="card-metric">
+                        <div class="cm-label">Altura</div>
+                        <div class="cm-value">${C.altura(r)!==null ? C.altura(r)+' cm' : '—'}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Diám. de Copa</div>
+                        <div class="cm-value">${C.diamCopa(r)!==null ? C.diamCopa(r)+' cm' : '—'}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Área Basal</div>
+                        <div class="cm-value">${C.areaBasal(r)!==null ? C.areaBasal(r)+' cm²' : '—'}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Fitosanitario</div>
+                        <div class="cm-value" style="font-size:14px">${fitoLabel}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Hídrico</div>
+                        <div class="cm-value" style="font-size:13px">${C.hidrico(r)}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Daño Mecánico</div>
+                        <div class="cm-value" style="font-size:13px">${C.dano(r)||'—'}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Plaga / Patógeno</div>
+                        <div class="cm-value" style="font-size:13px">${C.plaga(r)||'—'}</div>
+                    </div>
+                    <div class="card-metric">
+                        <div class="cm-label">Coordenadas UTM</div>
+                        <div class="cm-value" style="font-size:12px">E ${C.este(r).toFixed(0)} / N ${C.norte(r).toFixed(0)}</div>
+                    </div>
+                </div>
+                ${C.obs(r) ? `<div class="card-obs"><strong>Observaciones:</strong> ${C.obs(r)}</div>` : ''}
+                ${trendHtml}
+            </div>
+        </div>
+    </div>`;
+
+    const mc = document.getElementById('modalContainer');
+    mc.innerHTML = html;
+    mc.style.display = 'flex';
+}
+
+function buildHistory(cod, emi) {
+    const result = [];
+    CAMPAIGNS.forEach(c => {
+        if (!rawData[c.id]) return;
+        const match = rawData[c.id].find(r =>
+            (C.codigo(r)===cod || C.individuo(r)===cod) && C.estacion(r)===emi
+        );
+        if (match && (C.altura(match)!==null || C.diamCopa(match)!==null)) {
+            result.push({ camp:c.nombre, altura:C.altura(match), copa:C.diamCopa(match) });
+        }
+    });
+    return result;
+}
+
+function buildTrendChart(history) {
+    const id = 'trend_' + Date.now();
+    // Render after DOM insert
+    setTimeout(() => {
+        const cvs = document.getElementById(id);
+        if (!cvs) return;
+        new Chart(cvs, {
+            type: 'line',
+            data: {
+                labels: history.map(h=>h.camp),
+                datasets: [
+                    { label:'Altura (cm)', data:history.map(h=>h.altura), borderColor:'#1a6fb3', backgroundColor:'#1a6fb322', tension:0.3, spanGaps:true, pointRadius:5 },
+                    { label:'Copa (cm)',   data:history.map(h=>h.copa),   borderColor:'#00b5a3', backgroundColor:'#00b5a322', tension:0.3, spanGaps:true, pointRadius:5 },
+                ]
+            },
+            options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10, font:{size:10} } } }, scales:{ y:{ beginAtZero:false, grid:{color:'#f0f0f0'} }, x:{ grid:{display:false} } } }
+        });
+    }, 50);
+    return `<div class="card-trend">
+        <h4>📈 Historial entre monitoreos</h4>
+        <div style="position:relative;height:140px"><canvas id="${id}"></canvas></div>
+    </div>`;
+}
+
+function handleModalClick(e) { if (e.target.id==='modalOverlay') closePlantCard(); }
+function closePlantCard() { document.getElementById('modalContainer').style.display='none'; document.getElementById('modalContainer').innerHTML=''; }
+
+// ─────────────────────────────────────────────
+// COMPARISON VIEW
+// ─────────────────────────────────────────────
+function renderComparison(campaigns) {
+    // Tags de estado
+    const tagsHtml = CAMPAIGNS.map(c =>
+        `<span class="comp-tag ${c.estado==='Completado'?'done':c.estado==='En ejecución'?'running':'pending'}">${c.nombre} · ${c.estado}</span>`
+    ).join('');
+    document.getElementById('compTags').innerHTML = tagsHtml;
+
+    // Nota informativa
+    const hasMeas = campaigns.filter(c => {
+        const d=rawData[c.id]||[];
+        return d.some(r=>C.altura(r)!==null);
+    });
+    document.getElementById('compNote').innerHTML =
+        `ℹ️ La comparación se activa automáticamente cuando hay datos dasométricos en ≥ 2 campañas.
+         Actualmente con mediciones: <strong>${hasMeas.map(c=>c.nombre).join(', ')||'ninguna aún'}</strong>.
+         Las campañas en ejecución o proyectadas aparecerán al registrar sus datos.`;
+
+    // Obtener todos los EMI únicos
+    const allRows = campaigns.flatMap(c => rawData[c.id]||[]);
+    const emis = [...new Set(allRows.map(r=>C.estacion(r)).filter(Boolean))].sort();
+    const campLabels = campaigns.map(c=>c.nombre);
+    const palette = ['#1a6fb3','#00b5a3','#8e44ad','#e67e22','#2d9fd4','#c0392b','#f39c12','#0d4a7a'];
+
+    const makeDatasets = (metricFn) => emis.map((emi,i) => ({
+        label: emi,
+        data: campaigns.map(c => {
+            const rows=(rawData[c.id]||[]).filter(r=>C.estacion(r)===emi);
+            const vals=rows.map(r=>metricFn(r)).filter(v=>v!==null);
+            return vals.length ? parseFloat(avg(vals).toFixed(1)) : null;
+        }),
+        borderColor: palette[i%palette.length],
+        backgroundColor: palette[i%palette.length]+'28',
+        tension:0.35, spanGaps:true, pointRadius:5, pointHoverRadius:7,
+    }));
+
+    const lineOpts = { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:10} } } },
+        scales:{ y:{ beginAtZero:false, grid:{color:'#f0f0f0'} }, x:{ grid:{display:false} } }
+    };
+
+    ['cCompAltura','cCompCopa','cCompCobertura'].forEach(id=>{kill(id.replace('c','').toLowerCase());});
+
+    kill('compAltura');
+    charts.compAltura = new Chart(get('cCompAltura'), {
+        type:'line', data:{ labels:campLabels, datasets:makeDatasets(r=>C.altura(r)) }, options:lineOpts
+    });
+    kill('compCopa');
+    charts.compCopa = new Chart(get('cCompCopa'), {
+        type:'line', data:{ labels:campLabels, datasets:makeDatasets(r=>C.diamCopa(r)) }, options:lineOpts
+    });
+
+    // Cobertura por EMI por campaña
+    kill('compCobertura');
+    const cobDatasets = emis.map((emi,i) => ({
+        label: emi,
+        data: campaigns.map(c => {
+            const rows=(rawData[c.id]||[]).filter(r=>C.estacion(r)===emi);
+            if (!rows.length) return null;
+            const vivos=rows.filter(r=>C.estado(r)==='V').length;
+            return parseFloat((vivos/rows.length*100).toFixed(1));
+        }),
+        borderColor:palette[i%palette.length], backgroundColor:palette[i%palette.length]+'28',
+        tension:0.35, spanGaps:true, pointRadius:5,
+    }));
+    charts.compCobertura = new Chart(get('cCompCobertura'), {
+        type:'line', data:{ labels:campLabels, datasets:cobDatasets },
+        options:{ ...lineOpts, scales:{ y:{ min:0, max:100, grid:{color:'#f0f0f0'}, ticks:{ callback:v=>v+'%' } }, x:{ grid:{display:false} } } }
+    });
+
+    // Tabla individual
+    renderComparisonTable(campaigns);
+}
+
+function renderComparisonTable(campaigns) {
+    // Recolectar todos los individuos únicos por (codigo, emi)
+    const individuals = new Map();
+    campaigns.forEach(c => {
+        (rawData[c.id]||[]).forEach(r => {
+            const key = `${C.estacion(r)}||${C.codigo(r)||C.individuo(r)}`;
+            if (!individuals.has(key)) individuals.set(key, { emi:C.estacion(r), cod:C.codigo(r)||C.individuo(r), comun:C.comun(r), cient:C.cientifico(r), byCamp:{} });
+            individuals.get(key).byCamp[c.id] = r;
+        });
+    });
+
+    // Solo individuos con datos en ≥ 2 campañas con medición
+    const filtered = [...individuals.values()].filter(ind =>
+        campaigns.filter(c => ind.byCamp[c.id] && C.altura(ind.byCamp[c.id])!==null).length >= 2
+    );
+
+    // Header
+    const headCells = `<th>EMI</th><th>Individuo</th><th>Nombre común</th>` +
+        campaigns.flatMap(c=>[`<th>${c.nombre}<br>Alt.(cm)</th>`,`<th>${c.nombre}<br>Copa(cm)</th>`]).join('');
+    document.getElementById('compTableHead').innerHTML = headCells;
+
+    if (!filtered.length) {
+        document.getElementById('compTableBody').innerHTML =
+            `<tr><td colspan="${3+campaigns.length*2}" style="text-align:center;padding:20px;color:var(--text-light)">
+                Aún no hay individuos con mediciones en 2 o más campañas. Los datos aparecerán automáticamente cuando se completen los monitoreos posteriores.
+            </td></tr>`;
+        return;
+    }
+
+    filtered.sort((a,b)=>a.emi.localeCompare(b.emi)||a.cod.localeCompare(b.cod));
+
+    const rows = filtered.map(ind => {
+        const cells = campaigns.flatMap(c => {
+            const r=ind.byCamp[c.id];
+            const h=r?C.altura(r):null, d=r?C.diamCopa(r):null;
+            return [`<td>${h!==null?h:'—'}</td>`,`<td>${d!==null?d:'—'}</td>`];
+        }).join('');
+        return `<tr>
+            <td><strong>${ind.emi}</strong></td>
+            <td>${ind.cod}</td>
+            <td>${ind.comun||'—'}</td>
+            ${cells}
+        </tr>`;
+    }).join('');
+    document.getElementById('compTableBody').innerHTML = rows;
+}
+
+// ─────────────────────────────────────────────
+// VIEW SWITCH
+// ─────────────────────────────────────────────
+function showView(view) {
+    currentView = view;
+    document.getElementById('campaignView').style.display   = view==='campaign'    ? 'block' : 'none';
+    document.getElementById('comparisonView').style.display = view==='comparison'  ? 'block' : 'none';
+    document.getElementById('alertBanner').style.display    = view==='campaign'    ? ''      : 'none';
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+function groupBy(arr, fn) { return arr.reduce((a,x)=>{ const k=fn(x); (a[k]=a[k]||[]).push(x); return a; }, {}); }
+function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null; }
+function get(id)   { return document.getElementById(id); }
+function setText(id, val) { const el=get(id); if(el) el.textContent=val; }
+function loading(show, msg='Cargando…') {
+    get('loadingOverlay').style.display = show ? 'flex' : 'none';
+    if (msg) get('loadingMsg').textContent = msg;
+}
+function showAlert(type, icon, msg) {
+    const el=get('alertBanner'); el.className=`alert ${type}`; el.style.display='flex';
+    el.innerHTML=`<span class="alert-icon">${icon}</span><div>${msg}</div>`;
+}
+</script>
+</body>
+</html>
