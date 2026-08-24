@@ -6,6 +6,9 @@
     <title>Dashboard Monitoreo Dasométrico — CBS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
     <style>
         :root {
             /* Paleta CEORZA: azul corporativo + teal */
@@ -263,7 +266,66 @@
             .main { padding: 14px 14px 40px; }
             .kpi-grid { grid-template-columns: repeat(2, 1fr); }
             .r3, .r2, .r2b { grid-template-columns: 1fr; }
+            .card-grid { grid-template-columns: 1fr; }
         }
+
+        /* ── VIEW SWITCHER ── */
+        .view-btn {
+            padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.08); color: #fff; cursor: pointer;
+            font-size: 12px; font-weight: 700; transition: all 0.18s;
+        }
+        .view-btn:hover { background: rgba(255,255,255,0.18); }
+        .view-btn.active { background: #fff; color: var(--primary-dark); border-color: #fff; }
+        .view-sep { width: 1px; height: 20px; background: rgba(255,255,255,0.25); }
+
+        /* ── MAPA LEAFLET ── */
+        #mapContainer { height: 420px; border-radius: 10px; overflow: hidden; }
+
+        /* ── FICHA DE PLANTA (modal) ── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(10,20,40,0.72);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 5000; padding: 20px; animation: fadeIn 0.15s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .plant-card {
+            background: var(--card); border-radius: 18px; width: 100%; max-width: 540px;
+            max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            position: relative; animation: slideUp 0.2s ease;
+        }
+        @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .card-close {
+            position: absolute; top: 14px; right: 16px; background: rgba(0,0,0,0.08);
+            border: none; border-radius: 50%; width: 30px; height: 30px; font-size: 20px;
+            cursor: pointer; color: var(--text); display: flex; align-items: center; justify-content: center;
+        }
+        .card-close:hover { background: rgba(0,0,0,0.15); }
+        .card-header { padding: 22px 22px 16px; border-bottom: 1px solid var(--border); }
+        .card-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+        .badge-vivo { background: #d5f5e3; color: #1a6b3c; }
+        .badge-muerto { background: #fdf0ef; color: #922b21; }
+        .card-header h2 { font-size: 18px; font-weight: 800; }
+        .card-header em { font-size: 13px; color: var(--text-light); display: block; margin-top: 2px; font-style: italic; }
+        .card-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--text-light); }
+        .card-body { padding: 18px 22px 22px; }
+        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+        .card-metric { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+        .cm-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-light); font-weight: 700; margin-bottom: 4px; }
+        .cm-value { font-size: 16px; font-weight: 700; }
+        .card-obs { background: #fef9e7; border: 1px solid #f0c040; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #7a5500; line-height: 1.6; margin-top: 10px; }
+        .card-trend { margin-top: 14px; }
+        .card-trend h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-light); margin-bottom: 8px; }
+
+        /* ── RESUMEN PROYECTO ── */
+        .resumen-hero {
+            display: grid; grid-template-columns: 260px 1fr; gap: 20px;
+            background: var(--card); border-radius: 14px; padding: 20px; box-shadow: var(--shadow);
+            margin-bottom: 14px;
+        }
+        .resumen-trend-table th, .resumen-trend-table td { text-align: center; }
+        .resumen-trend-table td:first-child, .resumen-trend-table th:first-child { text-align: left; }
+        @media (max-width: 760px) { .resumen-hero { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -318,15 +380,20 @@
         </div>
     </div>
 
-    <!-- CAMPAIGN NAV -->
+    <!-- VIEW + CAMPAIGN NAV -->
     <div class="header-nav">
-        <span class="nav-label">Campaña:</span>
+        <button class="view-btn active" id="viewBtnCampana" onclick="switchView('campana')">📊 Monitoreo por Campaña</button>
+        <button class="view-btn" id="viewBtnResumen" onclick="switchView('resumen')">📋 Resumen del Proyecto</button>
+        <div class="view-sep"></div>
+        <span class="nav-label" id="campNavLabel">Campaña:</span>
         <div id="campNav"></div>
     </div>
 </header>
 
 <!-- MAIN -->
 <main class="main">
+
+<div id="viewCampana">
 
     <div id="alertBanner" style="display:none"></div>
 
@@ -402,11 +469,11 @@
         </div>
     </div>
 
-    <!-- MAPA UTM -->
+    <!-- MAPA -->
     <div class="section-title">Distribución espacial</div>
     <div class="chart-card" style="margin-bottom:14px">
-        <h3><span class="dot" style="background:#16a085"></span>Mapa UTM — individuos monitoreados (rojo = estado M o fitosanitario M)</h3>
-        <div style="position:relative;height:340px"><canvas id="cMapa"></canvas></div>
+        <h3><span class="dot" style="background:#16a085"></span>Mapa de individuos monitoreados — clic en un punto para ver su ficha (rojo = estado M o fitosanitario M)</h3>
+        <div id="mapContainer"></div>
     </div>
 
     <!-- TABLA ESTACIONES -->
@@ -438,21 +505,16 @@
     <!-- TABLA PRIORIDAD -->
     <div class="section-title">Atención prioritaria</div>
     <div class="table-card">
-        <h3>Individuos que requieren intervención inmediata</h3>
+        <h3>Resumen de individuos que requieren intervención — por estación · clic en el mapa para ver el detalle de cada uno</h3>
         <div class="tscroll">
             <table>
                 <thead>
                     <tr>
                         <th>Estación</th>
-                        <th>N° Individuo</th>
-                        <th>Nombre común</th>
-                        <th>Nombre científico</th>
-                        <th>Estado vital</th>
-                        <th>Fitosanitario</th>
-                        <th>Hídrico</th>
-                        <th>Daño mecánico</th>
-                        <th>Plaga / Patógeno</th>
-                        <th>Observaciones</th>
+                        <th>Muertos / Replante</th>
+                        <th>Fitosanitario Malo</th>
+                        <th>Con daño mecánico</th>
+                        <th>Con plaga / patógeno</th>
                     </tr>
                 </thead>
                 <tbody id="tPrioridad"></tbody>
@@ -460,7 +522,67 @@
         </div>
     </div>
 
+</div><!-- /viewCampana -->
+
+<div id="viewResumen" style="display:none">
+
+    <div class="section-title">Supervivencia total del proyecto</div>
+    <div class="resumen-hero">
+        <div style="position:relative;height:220px"><canvas id="cResumenGauge"></canvas></div>
+        <div>
+            <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+                <div class="kpi-card c-primary">
+                    <div class="kpi-label">Total plantones PCE</div>
+                    <div class="kpi-value" id="r-total" style="color:var(--primary);font-size:28px">—</div>
+                </div>
+                <div class="kpi-card c-green">
+                    <div class="kpi-label">Vivos (todas las áreas)</div>
+                    <div class="kpi-value" id="r-vivos" style="font-size:28px">—</div>
+                </div>
+                <div class="kpi-card c-red">
+                    <div class="kpi-label">Muertos identificados</div>
+                    <div class="kpi-value" id="r-muertos" style="font-size:28px">—</div>
+                </div>
+                <div class="kpi-card c-blue">
+                    <div class="kpi-label">N° especies / Superficie</div>
+                    <div class="kpi-value" id="r-especies" style="font-size:20px">—</div>
+                    <div class="kpi-sub" id="r-superficie"></div>
+                </div>
+            </div>
+            <div id="r-alert" style="margin-top:14px"></div>
+        </div>
+    </div>
+
+    <div class="section-title">Tendencia de supervivencia — Censo a última campaña</div>
+    <div class="table-card">
+        <h3>Tabla 7. Indicadores de supervivencia</h3>
+        <div class="tscroll">
+            <table class="resumen-trend-table">
+                <thead>
+                    <tr id="r-trend-header"><th>Indicador</th></tr>
+                </thead>
+                <tbody id="r-trend-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="section-title">Aporte de muertos por estación (última campaña)</div>
+    <div class="table-card">
+        <h3>Estaciones que más contribuyen a la mortalidad del proyecto</h3>
+        <div class="tscroll">
+            <table>
+                <thead><tr><th>Estación</th><th>Muertos en muestra</th><th>% del total de muertos monitoreados</th></tr></thead>
+                <tbody id="r-estaciones-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div><!-- /viewResumen -->
+
 </main>
+
+<!-- FICHA DE PLANTA -->
+<div id="modalContainer" style="display:none"></div>
 
 <footer>
     Dashboard de Monitoreo Dasométrico · Datos actualizados automáticamente desde Google Sheets · Desarrollado por CEORZA
@@ -565,9 +687,25 @@ function kill(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 // ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     buildCampaignNav();
+    initLeafletMap();
     const first = CAMPAIGNS.find(c => c.estado !== 'Proyectado') || CAMPAIGNS[0];
     loadCampaign(first);
 });
+
+// ─────────────────────────────────────────────
+// VIEW SWITCHER — Campaña (detalle por temporada) vs Resumen (proyecto completo)
+// ─────────────────────────────────────────────
+function switchView(v) {
+    const cam = v === 'campana';
+    get('viewCampana').style.display = cam ? '' : 'none';
+    get('viewResumen').style.display = cam ? 'none' : '';
+    get('viewBtnCampana').classList.toggle('active', cam);
+    get('viewBtnResumen').classList.toggle('active', !cam);
+    get('campNavLabel').style.display = cam ? '' : 'none';
+    get('campNav').style.display = cam ? '' : 'none';
+    if (cam && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 50);
+    if (!cam) renderResumen();
+}
 
 function buildCampaignNav() {
     const nav = document.getElementById('campNav');
@@ -634,7 +772,7 @@ function render(data, camp) {
     chartEspecies(data, C);
     chartDano(data, C);
     chartPlagas(data, C);
-    chartMapa(data, C);
+    updateLeafletMarkers(data, C, camp);
     tableEstaciones(data, C);
     tablePrioridad(data, C);
 }
@@ -819,37 +957,114 @@ function chartPlagas(data, C) {
     });
 }
 
-function chartMapa(data, C) {
-    kill('mapa');
-    const by = groupBy(data, r => C.estacion(r));
-    const stations = Object.keys(by).sort();
-    const palette = ['#1a6fb3','#00b5a3','#8e44ad','#e67e22','#2d9fd4','#c0392b','#f39c12','#0d4a7a'];
-    const datasets = stations.map((st, i) => ({
-        label: st,
-        data: by[st]
-            .map(r => ({ x: C.este(r), y: C.norte(r), fito: C.fito(r), estado: C.estado(r), ind: C.individuo(r), comun: C.comun(r) }))
-            .filter(p => p.x && p.y),
-        backgroundColor: by[st].map(r => (C.estado(r)==='M'||C.fito(r)==='M') ? 'rgba(231,76,60,0.85)' : palette[i%palette.length]+'cc'),
-        pointRadius: 6, pointHoverRadius: 9,
-    }));
-    charts.mapa = new Chart(get('cMapa'), {
-        type: 'scatter',
-        data: { datasets },
-        options: {
-            responsive:true, maintainAspectRatio:false,
-            plugins: {
-                legend: { position:'bottom', labels:{ boxWidth:10, font:{size:11} } },
-                tooltip: { callbacks: { label: ctx => {
-                    const p = ctx.raw;
-                    return `${ctx.dataset.label} · #${p.ind} ${p.comun} | Fito:${p.fito} | ${p.estado==='V'?'Vivo':'Muerto'} | E:${p.x.toFixed(0)} N:${p.y.toFixed(0)}`;
-                }}}
-            },
-            scales: {
-                x: { title:{ display:true, text:'Este (UTM)' }, grid:{ color:'#f0f0f0' } },
-                y: { title:{ display:true, text:'Norte (UTM)' }, grid:{ color:'#f0f0f0' } }
-            }
-        }
+// ─────────────────────────────────────────────
+// MAPA (Leaflet + Proj4js) — clic en un individuo abre su ficha
+// ─────────────────────────────────────────────
+let leafletMap = null, markersLayer = null;
+proj4.defs('EPSG:32717', '+proj=utm +zone=17 +south +datum=WGS84 +units=m +no_defs'); // Zona UTM 17S (Tumbes)
+
+function initLeafletMap() {
+    leafletMap = L.map('mapContainer', { zoomControl: true });
+    const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 21 });
+    const str = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 });
+    sat.addTo(leafletMap);
+    L.control.layers({ '🛰 Satelital': sat, '🗺 Calles': str }).addTo(leafletMap);
+    markersLayer = L.layerGroup().addTo(leafletMap);
+    leafletMap.setView([-4.0, -80.0], 12);
+}
+
+function utmToLatLng(e, n) {
+    try {
+        const [lng, lat] = proj4('EPSG:32717', 'WGS84', [e, n]);
+        return (isNaN(lat) || lat < -90 || lat > 90) ? null : L.latLng(lat, lng);
+    } catch { return null; }
+}
+
+function updateLeafletMarkers(data, C, camp) {
+    markersLayer.clearLayers();
+    const bounds = [];
+    data.forEach(r => {
+        const e = C.este(r), n = C.norte(r);
+        if (!e || !n) return;
+        const ll = utmToLatLng(e, n);
+        if (!ll) return;
+        bounds.push(ll);
+        const est = C.estado(r), fit = C.fito(r);
+        const color = (est === 'M' || fit === 'M') ? '#e74c3c' : fit === 'R' ? '#f39c12' : '#27ae60';
+        const m = L.circleMarker(ll, { radius: 7, fillColor: color, color: '#fff', weight: 1.5, opacity: 1, fillOpacity: 0.9 });
+        m.bindTooltip(`<strong>#${C.individuo(r)}</strong> — ${C.comun(r) || C.cientifico(r)}<br><em>${C.estacion(r)}</em>`, { direction: 'top', offset: [0, -6] });
+        m.on('click', () => showPlantCard(r, camp.n));
+        markersLayer.addLayer(m);
     });
+    if (bounds.length) leafletMap.fitBounds(L.latLngBounds(bounds), { padding: [30, 30], maxZoom: 18 });
+}
+
+// ─────────────────────────────────────────────
+// FICHA DE PLANTA (modal) — usa C global (no bindC) para poder mostrar el
+// historial de la misma fila a través de todas las campañas (Altura {n}, etc.)
+// ─────────────────────────────────────────────
+function showPlantCard(r, n) {
+    const est = C.estado(r, n), fit = C.fito(r, n);
+    const fitoLabel = fit === 'B' ? '🟢 Bueno' : fit === 'R' ? '🟡 Regular' : fit === 'M' ? '🔴 Malo' : '—';
+    const history = buildHistory(r);
+    const trendHtml = history.length >= 2 ? buildTrendChart(history) : '';
+    document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target.id==='modalOverlay')closePlantCard()">
+        <div class="plant-card">
+            <button class="card-close" onclick="closePlantCard()">×</button>
+            <div class="card-header">
+                <span class="card-badge ${est === 'V' ? 'badge-vivo' : 'badge-muerto'}">${est === 'V' ? '🌱 Vivo' : '💀 Muerto / Requiere replante'}</span>
+                <h2>${C.comun(r) || 'Sin nombre común'}</h2>
+                <em>${C.cientifico(r) || '—'}</em>
+                <div class="card-meta"><span>📍 ${C.estacion(r)}</span><span>🔢 #${C.individuo(r)}</span></div>
+            </div>
+            <div class="card-body">
+                <div class="card-grid">
+                    <div class="card-metric"><div class="cm-label">Altura</div><div class="cm-value">${C.altura(r, n) !== null ? C.altura(r, n) + ' cm' : '—'}</div></div>
+                    <div class="card-metric"><div class="cm-label">Diám. Copa</div><div class="cm-value">${C.diamCopa(r, n) !== null ? C.diamCopa(r, n) + ' cm' : '—'}</div></div>
+                    <div class="card-metric"><div class="cm-label">Área Basal</div><div class="cm-value">${C.areaBasal(r, n) !== null ? C.areaBasal(r, n) + ' cm²' : '—'}</div></div>
+                    <div class="card-metric"><div class="cm-label">Fitosanitario</div><div class="cm-value" style="font-size:14px">${fitoLabel}</div></div>
+                    <div class="card-metric"><div class="cm-label">Hídrico</div><div class="cm-value" style="font-size:13px">${C.hidrico(r, n)}</div></div>
+                    <div class="card-metric"><div class="cm-label">Daño Mecánico</div><div class="cm-value" style="font-size:13px">${C.dano(r, n) || '—'}</div></div>
+                    <div class="card-metric"><div class="cm-label">Plaga/Patógeno</div><div class="cm-value" style="font-size:13px">${C.plaga(r, n) || '—'}</div></div>
+                    <div class="card-metric"><div class="cm-label">Coordenadas UTM</div><div class="cm-value" style="font-size:12px">E ${C.este(r).toFixed(0)} / N ${C.norte(r).toFixed(0)}</div></div>
+                </div>
+                ${trendHtml}
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('modalContainer').style.display = 'flex';
+}
+
+// Una sola fila ya trae los datos de las 4 campañas (Altura {n}, Diám. Copa {n}...),
+// así que el historial se arma leyendo la misma fila con cada n — no hace falta buscar en otras hojas.
+function buildHistory(row) {
+    return CAMPAIGNS.map(c => {
+        const altura = C.altura(row, c.n), copa = C.diamCopa(row, c.n);
+        return (altura !== null || copa !== null) ? { camp: c.nombre, altura, copa } : null;
+    }).filter(Boolean);
+}
+
+function buildTrendChart(history) {
+    const id = 'tr_' + Math.floor(Math.random() * 1e9);
+    setTimeout(() => {
+        const cvs = document.getElementById(id);
+        if (!cvs) return;
+        new Chart(cvs, {
+            type: 'line',
+            data: { labels: history.map(h => h.camp), datasets: [
+                { label: 'Altura (cm)', data: history.map(h => h.altura), borderColor: '#1a6fb3', backgroundColor: '#1a6fb322', tension: 0.3, spanGaps: true, pointRadius: 5 },
+                { label: 'Copa (cm)',   data: history.map(h => h.copa),   borderColor: '#00b5a3', backgroundColor: '#00b5a322', tension: 0.3, spanGaps: true, pointRadius: 5 },
+            ]},
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { y: { beginAtZero: false, grid: { color: '#f0f0f0' } }, x: { grid: { display: false } } } }
+        });
+    }, 50);
+    return `<div class="card-trend"><h4>📈 Historial entre monitoreos</h4><div style="position:relative;height:140px"><canvas id="${id}"></canvas></div></div>`;
+}
+
+function closePlantCard() {
+    document.getElementById('modalContainer').style.display = 'none';
+    document.getElementById('modalContainer').innerHTML = '';
 }
 
 // ─────────────────────────────────────────────
@@ -887,34 +1102,122 @@ function tableEstaciones(data, C) {
     document.getElementById('tEstaciones').innerHTML = rows.join('');
 }
 
+// Conteos agrupados por estación en vez de listar cada individuo — evita que la vista se
+// alargue temporada tras temporada. El detalle de cada planta se ve en el mapa (clic → ficha).
 function tablePrioridad(data, C) {
-    const priority = data.filter(r => {
-        const p = C.plaga(r).toLowerCase();
-        return C.estado(r)==='M' || C.fito(r)==='M' || (p && !['no','ninguno','sin plaga','','n/a','-'].includes(p));
-    });
-    if (!priority.length) {
-        document.getElementById('tPrioridad').innerHTML =
-            `<tr><td colspan="10" style="text-align:center;color:#27ae60;padding:20px;font-weight:500">
-                ✅ Sin individuos que requieran intervención inmediata en esta campaña.
-            </td></tr>`;
-        return;
-    }
-    const rows = priority.map(r => {
-        const est = C.estado(r), fit = C.fito(r);
+    const by = groupBy(data, r => C.estacion(r));
+    const isNone = (v, none) => { const s = (v || '').toLowerCase(); return !s || none.includes(s); };
+    const rows = Object.keys(by).sort().map(st => {
+        const rr = by[st];
+        const muertos = rr.filter(r => C.estado(r) === 'M').length;
+        const fitoM   = rr.filter(r => C.fito(r) === 'M').length;
+        const dano    = rr.filter(r => !isNone(C.dano(r),  ['no','ninguno','sin daño'])).length;
+        const plaga   = rr.filter(r => !isNone(C.plaga(r), ['no','ninguno','sin plaga','n/a','-'])).length;
+        if (!muertos && !fitoM && !dano && !plaga) return null;
         return `<tr>
-            <td><strong>${C.estacion(r)}</strong></td>
-            <td>${C.individuo(r)}</td>
-            <td>${C.comun(r)}</td>
-            <td><em>${C.cientifico(r)}</em></td>
-            <td><span class="badge ${est==='V'?'b-V':'b-dead'}">${est==='V'?'Vivo':'Muerto'}</span></td>
-            <td><span class="badge b-${fit}">${fit==='B'?'Bueno':fit==='R'?'Regular':'Malo'}</span></td>
-            <td>${C.hidrico(r)}</td>
-            <td>${C.dano(r)||'—'}</td>
-            <td>${C.plaga(r)||'—'}</td>
-            <td style="max-width:180px;white-space:normal;font-size:11px">${C.obs(r)||'—'}</td>
+            <td><strong>${st}</strong></td>
+            <td>${muertos > 0 ? `<span style="color:#e74c3c;font-weight:700">${muertos}</span>` : '0'}</td>
+            <td>${fitoM > 0 ? `<span class="badge b-M">${fitoM}</span>` : '<span class="badge b-B">0</span>'}</td>
+            <td>${dano > 0 ? `<span style="color:#e67e22;font-weight:600">${dano}</span>` : '0'}</td>
+            <td>${plaga > 0 ? `<span style="color:#c0392b;font-weight:600">${plaga}</span>` : '0'}</td>
         </tr>`;
+    }).filter(Boolean);
+    document.getElementById('tPrioridad').innerHTML = rows.length ? rows.join('') :
+        `<tr><td colspan="5" style="text-align:center;color:#27ae60;padding:20px;font-weight:500">✅ Sin individuos que requieran intervención inmediata en esta campaña.</td></tr>`;
+}
+
+// ─────────────────────────────────────────────
+// RESUMEN DEL PROYECTO — supervivencia sobre el universo completo de plantones (18,741),
+// no solo la muestra de estaciones de monitoreo (1,693)
+// ─────────────────────────────────────────────
+const TOTAL_PROYECTO = 18741;
+const N_ESPECIES = 10;
+const SUPERFICIE_HA = 7.5098;
+
+// Censo–Mon03 vienen del informe oficial (Tabla 7): en esas etapas aún no se había evaluado
+// el universo completo de 18,741 (vivos+muertos suma 17,193 hasta Mon02). Desde Mon03 el
+// universo ya está completo y desde Mon04 el dato se recalcula en vivo desde el sheet,
+// descontando del total los muertos identificados en las estaciones de monitoreo — así no
+// se repite el error de dar "0 muertos / 100%" cuando en realidad sí hubo mortalidad.
+const PROJECT_HISTORY = [
+    { nombre: 'Censo',        vivos: 13366, muertos: 3827 },
+    { nombre: 'Monitoreo 01', vivos: 14119, muertos: 3074 },
+    { nombre: 'Monitoreo 02', vivos: 14116, muertos: 3077 },
+    { nombre: 'Monitoreo 03', vivos: 18575, muertos: 166 },
+];
+
+async function renderResumen() {
+    if (!ALL_ROWS) ALL_ROWS = await fetchCSV();
+
+    const dynamicCampaigns = CAMPAIGNS.filter(c => c.n >= 4).map(c => {
+        const muertos = ALL_ROWS.filter(r => C.estado(r, c.n) === 'M').length;
+        return { nombre: c.nombre, vivos: TOTAL_PROYECTO - muertos, muertos };
     });
-    document.getElementById('tPrioridad').innerHTML = rows.join('');
+    const trend = [...PROJECT_HISTORY, ...dynamicCampaigns];
+    const current = trend[trend.length - 1];
+    const supervivencia = current.vivos / TOTAL_PROYECTO * 100;
+
+    setText('r-total', TOTAL_PROYECTO.toLocaleString('es-PE'));
+    setText('r-vivos', current.vivos.toLocaleString('es-PE'));
+    setText('r-muertos', current.muertos.toLocaleString('es-PE'));
+    setText('r-especies', N_ESPECIES + ' especies');
+    setText('r-superficie', SUPERFICIE_HA + ' ha evaluadas');
+
+    const alertEl = get('r-alert');
+    alertEl.innerHTML = supervivencia >= COVERAGE_TARGET
+        ? `<div class="alert success"><span class="alert-icon">✅</span><div>Supervivencia dentro de meta: <strong>${supervivencia.toFixed(2)}%</strong> — objetivo ${COVERAGE_TARGET}% cumplido en <strong>${current.nombre}</strong></div></div>`
+        : `<div class="alert danger"><span class="alert-icon">⚠️</span><div>Supervivencia bajo la meta: <strong>${supervivencia.toFixed(2)}%</strong> vs objetivo ${COVERAGE_TARGET}% en <strong>${current.nombre}</strong></div></div>`;
+
+    kill('resumenGauge');
+    const pct = Math.min(supervivencia, 100);
+    const color = pct >= COVERAGE_TARGET ? '#27ae60' : '#e74c3c';
+    charts.resumenGauge = new Chart(get('cResumenGauge'), {
+        type: 'doughnut',
+        data: { labels: ['Supervivencia', 'Déficit'], datasets: [{ data: [pct, Math.max(0, 100 - pct)], backgroundColor: [color, '#ecf0f1'], borderWidth: 0, circumference: 180, rotation: 270 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '74%', plugins: { legend: { display: false }, tooltip: { enabled: false } } },
+        plugins: [{
+            id: 'gauge-text-resumen',
+            afterDraw(chart) {
+                const { ctx, width, height } = chart;
+                ctx.save();
+                const cx = width / 2, cy = height * 0.80;
+                ctx.textAlign = 'center';
+                ctx.font = `bold 34px 'Segoe UI', sans-serif`; ctx.fillStyle = color;
+                ctx.fillText(`${pct.toFixed(1)}%`, cx, cy);
+                ctx.font = `11px 'Segoe UI', sans-serif`; ctx.fillStyle = '#7f8c8d';
+                ctx.fillText(`Meta: ${COVERAGE_TARGET}%`, cx, cy + 20);
+                ctx.restore();
+            }
+        }]
+    });
+
+    // Tabla 7 — recalculada
+    get('r-trend-header').innerHTML = '<th>Indicador</th>' + trend.map(t => `<th>${t.nombre}</th>`).join('');
+    const rowsSpec = [
+        { label: 'Total plantones PCE',              get: () => TOTAL_PROYECTO.toLocaleString('es-PE') },
+        { label: 'Individuos vivos contabilizados',  get: t => t.vivos.toLocaleString('es-PE') },
+        { label: 'Individuos muertos identificados', get: t => t.muertos.toLocaleString('es-PE') },
+        { label: '% Supervivencia actual',           get: t => (t.vivos / TOTAL_PROYECTO * 100).toFixed(2) + '%' },
+        { label: '% Mortalidad actual',               get: t => (t.muertos / TOTAL_PROYECTO * 100).toFixed(2) + '%' },
+    ];
+    get('r-trend-body').innerHTML = rowsSpec.map(spec =>
+        `<tr><td><strong>${spec.label}</strong></td>${trend.map(t => `<td>${spec.get(t)}</td>`).join('')}</tr>`
+    ).join('');
+
+    // Estaciones que más aportan a la mortalidad en la última campaña con datos
+    const lastN = CAMPAIGNS[CAMPAIGNS.length - 1].n;
+    const muertosRows = ALL_ROWS.filter(r => C.estado(r, lastN) === 'M');
+    const byStation = groupBy(muertosRows, r => C.estacion(r));
+    const totalMuertosMuestra = muertosRows.length;
+    const stRows = Object.keys(byStation)
+        .sort((a, b) => byStation[b].length - byStation[a].length)
+        .map(st => {
+            const cnt = byStation[st].length;
+            const pct = totalMuertosMuestra ? (cnt / totalMuertosMuestra * 100).toFixed(1) : '0.0';
+            return `<tr><td><strong>${st}</strong></td><td>${cnt}</td><td>${pct}%</td></tr>`;
+        });
+    get('r-estaciones-body').innerHTML = stRows.length ? stRows.join('') :
+        `<tr><td colspan="3" style="text-align:center;color:#27ae60;padding:16px">Sin muertos identificados en la última campaña.</td></tr>`;
 }
 
 // ─────────────────────────────────────────────
